@@ -33,9 +33,6 @@ public class FILE_PING extends Discovery {
     @Property(description="The absolute path of the shared file")
     protected String location=File.separator + "tmp" + File.separator + "jgroups";
 
-    @Deprecated @Property(description="Interval (in milliseconds) at which the own Address is written. 0 disables it.")
-    protected long interval=60000;
-
     @Property(description="If true, on a view change, the new coordinator removes files from old coordinators")
     protected boolean remove_old_coords_on_view_change=false;
 
@@ -58,9 +55,7 @@ public class FILE_PING extends Discovery {
 
     /* --------------------------------------------- Fields ------------------------------------------------------ */
     protected File                        root_dir=null;
-    protected static final FilenameFilter filter=new FilenameFilter() {
-        public boolean accept(File dir, String name) {return name.endsWith(SUFFIX);}
-    };
+    protected static final FilenameFilter filter=(dir, name1) -> name1.endsWith(SUFFIX);
     protected Future<?>                   info_writer;
 
     public boolean isDynamic() {return true;}
@@ -136,7 +131,7 @@ public class FILE_PING extends Discovery {
     /** Only add the discovery response if the logical address is not present or the physical addrs are different */
     protected boolean addDiscoveryResponseToCaches(Address mbr, String logical_name, PhysicalAddress physical_addr) {
         PhysicalAddress phys_addr=(PhysicalAddress)down_prot.down(new Event(Event.GET_PHYSICAL_ADDRESS, mbr));
-        boolean added=phys_addr == null || !phys_addr.equals(physical_addr);
+        boolean added=!Objects.equals(phys_addr, physical_addr);
         super.addDiscoveryResponseToCaches(mbr, logical_name, physical_addr);
         if(added && is_coord)
             writeAll();

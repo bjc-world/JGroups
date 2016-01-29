@@ -331,12 +331,12 @@ public class GroupRequest<T> extends Request {
     /* --------------------------------- Private Methods -------------------------------------*/
 
     private void setTarget(Address mbr) {
-        requests.put(mbr, new Rsp<T>(mbr));
+        requests.put(mbr, new Rsp<>(mbr));
     }
 
     private void setTargets(Collection<Address> mbrs) {
         for(Address mbr: mbrs)
-            requests.put(mbr, new Rsp<T>(mbr));
+            requests.put(mbr, new Rsp<>(mbr));
     }
 
     private static int determineMajority(int i) {
@@ -368,9 +368,6 @@ public class GroupRequest<T> extends Request {
                 return num_valid >= 1 || num_received >= num_total;
             case GET_ALL:
                 return num_valid >= num_total || num_received >= num_total;
-            case GET_MAJORITY:
-                int majority=determineMajority(num_total);
-                return num_valid >= majority || num_received >= num_total;
             case GET_NONE:
                 return true;
             default:

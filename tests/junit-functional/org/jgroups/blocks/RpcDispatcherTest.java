@@ -9,18 +9,13 @@ import org.jgroups.protocols.FRAG;
 import org.jgroups.protocols.FRAG2;
 import org.jgroups.protocols.TP;
 import org.jgroups.stack.Protocol;
-import org.jgroups.util.FutureListener;
-import org.jgroups.util.Rsp;
-import org.jgroups.util.RspList;
-import org.jgroups.util.Util;
+import org.jgroups.util.*;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
-import java.util.ArrayList;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
+import java.lang.reflect.Method;
+import java.util.*;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -144,23 +139,17 @@ public class RpcDispatcherTest {
 
     public void testException() throws Exception {
         RspList<Object> rsps=disp1.callRemoteMethods(null, "throwException", null, null, new RequestOptions(ResponseMode.GET_ALL, 5000));
-        for(Rsp<Object> rsp: rsps.values()) {
-            System.out.println(rsp);
-        }
-        for(Rsp<Object> rsp: rsps.values()) {
+        rsps.values().forEach(System.out::println);
+        for(Rsp<Object> rsp: rsps.values())
             assert rsp.getException() != null && rsp.getValue() == null;
-        }
     }
 
 
     public void testExceptionAsReturnValue() throws Exception {
         RspList<Object> rsps=disp1.callRemoteMethods(null, "returnException", null, null, new RequestOptions(ResponseMode.GET_ALL, 5000));
-        for(Rsp<Object> rsp: rsps.values()) {
-            System.out.println(rsp);
-        }
-        for(Rsp<Object> rsp: rsps.values()) {
+        rsps.values().forEach(System.out::println);
+        for(Rsp<Object> rsp: rsps.values())
             assert rsp.getException() == null && rsp.getValue() != null && rsp.getValue() instanceof Throwable;
-        }
     }
 
 
@@ -371,9 +360,7 @@ public class RpcDispatcherTest {
             Util.sleep(200);
         }
         System.out.println("\n" + rsps.size() + " responses:\n");
-        for(Future<RspList<Long>> tmp: rsps) {
-            System.out.println(tmp);
-        }
+        rsps.forEach(System.out::println);
     }
 
     public void testMultipleNotifyingFutures() throws Exception {
@@ -470,7 +457,6 @@ public class RpcDispatcherTest {
      * Tests a method call to {A,B,C} where C left *before* the call. http://jira.jboss.com/jira/browse/JGRP-620
      */
     public void testMethodInvocationToNonExistingMembers() throws Exception {
-
         final int timeout = 5 * 1000 ;
 
         // get the current membership, as seen by C
@@ -515,6 +501,74 @@ public class RpcDispatcherTest {
             _testLargeValueUnicastCall(a.getAddress(), SIZES[i]);
         }
     }
+
+    public void testRpcStats() throws Exception {
+        Method meth=ServerObject.class.getDeclaredMethod("foo");
+        List<Address> targets=Arrays.asList(b.getAddress(), c.getAddress());
+        RpcStats stats=disp1.rpcStats().extendedStats(true);
+
+        // sync mcast with future
+        disp1.callRemoteMethodsWithFuture(null, new MethodCall(meth), RequestOptions.SYNC());
+        System.out.println("stats = " + stats);
+        assert stats.multicasts(true) == 1;
+
+        // async mcast with future
+        disp1.callRemoteMethodsWithFuture(null, new MethodCall(meth), RequestOptions.ASYNC());
+        System.out.println("stats = " + stats);
+        assert stats.multicasts(false) == 1;
+
+        // sync anycast with future
+        disp1.callRemoteMethodsWithFuture(targets, new MethodCall(meth), RequestOptions.SYNC().setAnycasting(true));
+        System.out.println("stats = " + stats);
+        assert stats.anycasts(true) == 1;
+
+        // async anycast with future
+        disp1.callRemoteMethodsWithFuture(targets, new MethodCall(meth), RequestOptions.ASYNC().setAnycasting(true));
+        System.out.println("stats = " + stats);
+        assert stats.anycasts(false) == 1;
+
+        // sync unicast with future
+        disp1.callRemoteMethodWithFuture(b.getAddress(), new MethodCall(meth), RequestOptions.SYNC());
+        System.out.println("stats = " + stats);
+        assert stats.unicasts(true) == 1;
+
+        // async unicast with future
+        disp1.callRemoteMethodWithFuture(b.getAddress(), new MethodCall(meth), RequestOptions.ASYNC());
+        System.out.println("stats = " + stats);
+        assert stats.unicasts(false) == 1;
+
+
+        // sync mcast
+        disp1.callRemoteMethods(null, new MethodCall(meth), RequestOptions.SYNC());
+        System.out.println("stats = " + stats);
+        assert stats.multicasts(true) == 2;
+
+        // async mcast
+        disp1.callRemoteMethods(null, new MethodCall(meth), RequestOptions.ASYNC());
+        System.out.println("stats = " + stats);
+        assert stats.multicasts(false) == 2;
+
+        // sync anycast
+        disp1.callRemoteMethods(targets, new MethodCall(meth), RequestOptions.SYNC().setAnycasting(true));
+        System.out.println("stats = " + stats);
+        assert stats.anycasts(true) == 2;
+
+        // async anycast
+        disp1.callRemoteMethods(targets, new MethodCall(meth), RequestOptions.ASYNC().setAnycasting(true));
+        System.out.println("stats = " + stats);
+        assert stats.anycasts(false) == 2;
+
+        // sync unicast
+        disp1.callRemoteMethod(b.getAddress(), new MethodCall(meth), RequestOptions.SYNC());
+        System.out.println("stats = " + stats);
+        assert stats.unicasts(true) == 2;
+
+        // async unicast
+        disp1.callRemoteMethod(b.getAddress(), new MethodCall(meth), RequestOptions.ASYNC());
+        System.out.println("stats = " + stats);
+        assert stats.unicasts(false) == 2;
+    }
+
 
 
     protected static void setProps(JChannel... channels) {

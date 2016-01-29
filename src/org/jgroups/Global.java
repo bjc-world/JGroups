@@ -1,7 +1,6 @@
 package org.jgroups;
 
-import org.jgroups.conf.ClassConfigurator;
-import org.jgroups.protocols.SCOPE;
+import org.jgroups.util.UUID;
 
 /**
  * Global is a JGroups internal class defining global variables.
@@ -18,8 +17,7 @@ public final class Global {
     public static final int FLOAT_SIZE  = Float.SIZE   / 8; // 4;
 
     public static final int MAX_DATAGRAM_PACKET_SIZE=1 << 16;
-
-    public static final short SCOPE_ID=ClassConfigurator.getProtocolId(SCOPE.class);
+    public static final Address NULL_ADDRESS=new UUID(0,0);
 
     public static final String IPv4="java.net.preferIPv4Stack";
     public static final String IPv6="java.net.preferIPv6Addresses";
@@ -69,8 +67,6 @@ public final class Global {
 
     /** First ID assigned for building blocks (defined in jg-protocols.xml) */
     public static final short  BLOCKS_START_ID=200;
-    
-    public static final String SINGLETON_NAME="singleton_name";
     
     public static final long   THREADPOOL_SHUTDOWN_WAIT_TIME=3000;
     public static final long   THREAD_SHUTDOWN_WAIT_TIME=300;

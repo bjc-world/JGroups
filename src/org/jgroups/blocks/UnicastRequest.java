@@ -7,6 +7,7 @@ import org.jgroups.protocols.relay.SiteAddress;
 import org.jgroups.util.Rsp;
 
 import java.util.Collection;
+import java.util.Objects;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -91,7 +92,7 @@ public class UnicastRequest<T> extends Request {
      * (where available). It is used to exclude faulty members from the response list.
      */
     public void suspect(Address suspected_member) {
-        if(suspected_member == null || !suspected_member.equals(target))
+        if(!Objects.equals(suspected_member, target))
             return;
 
         lock.lock();
@@ -229,10 +230,7 @@ public class UnicastRequest<T> extends Request {
     }
 
     public String toString() {
-        StringBuilder ret=new StringBuilder(128);
-        ret.append(super.toString());
-        ret.append(", target=" + target);
-        return ret.toString();
+        return String.format("%s, target=%s", super.toString(), target);
     }
 
 

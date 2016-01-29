@@ -21,14 +21,14 @@ import java.util.*;
  * @author Bela Ban
  */
 public class RpcDispatcher extends MessageDispatcher {
-    protected Object        server_obj=null;
+    protected Object        server_obj;
     /** Marshaller to marshall requests at the caller and unmarshal requests at the receiver(s) */
-    protected Marshaller    req_marshaller=null;
+    protected Marshaller    req_marshaller;
 
     /** Marshaller to marshal responses at the receiver(s) and unmarshal responses at the caller */
-    protected Marshaller    rsp_marshaller=null;
+    protected Marshaller    rsp_marshaller;
 
-    protected MethodLookup  method_lookup=null;
+    protected MethodLookup  method_lookup;
 
 
     public RpcDispatcher() {
@@ -174,7 +174,7 @@ public class RpcDispatcher extends MessageDispatcher {
         if(dests != null && dests.isEmpty()) { // don't send if dest list is empty
             if(log.isTraceEnabled())
                 log.trace("destination list of %s() is empty: no need to send message", method_call.getName());
-            return new NullFuture<RspList<T>>(new RspList());
+            return new NullFuture<>(new RspList());
         }
 
         if(log.isTraceEnabled())
@@ -258,10 +258,8 @@ public class RpcDispatcher extends MessageDispatcher {
                                                              FutureListener<T> listener) throws Exception {
         if(log.isTraceEnabled())
             log.trace("dest=%s, method_call=%s, options=%s", dest, call, options);
-
         Buffer buf=req_marshaller != null? req_marshaller.objectToBuffer(call) : Util.objectToBuffer(call);
         Message msg=new Message(dest, null, null).setBuffer(buf);
-
         return super.sendMessageWithFuture(msg, options, listener);
     }
 

@@ -65,7 +65,6 @@ public class Util {
 
     // constants
     public static final int MAX_PORT=65535; // highest port allocatable
-    @Deprecated  static boolean resolve_dns=false;
 
     private static final Pattern METHOD_NAME_TO_ATTR_NAME_PATTERN=Pattern.compile("[A-Z]+");
     private static final Pattern ATTR_NAME_TO_METHOD_NAME_PATTERN=Pattern.compile("_.");
@@ -86,9 +85,7 @@ public class Util {
     private static final byte[] TYPE_BOOLEAN_TRUE={TYPE_BOOLEAN, 1};
     private static final byte[] TYPE_BOOLEAN_FALSE={TYPE_BOOLEAN, 0};
 
-    public static final Class<?>[] getUnicastProtocols() {
-        return new Class<?>[]{UNICAST.class,UNICAST2.class,UNICAST3.class};
-    }
+    public static final Class<?>[] getUnicastProtocols() {return new Class<?>[]{UNICAST3.class};}
 
     public enum AddressScope {GLOBAL,SITE_LOCAL,LINK_LOCAL,LOOPBACK,NON_LOOPBACK}
 
@@ -103,14 +100,6 @@ public class Util {
     static {
         resource_bundle=ResourceBundle.getBundle("jg-messages",Locale.getDefault(),Thread.currentThread().getContextClassLoader());
 
-        /* Trying to get value of resolve_dns. PropertyPermission not granted if
-        * running in an untrusted environment with JNLP */
-        try {
-            resolve_dns=Boolean.valueOf(System.getProperty("resolve.dns","false"));
-        }
-        catch(SecurityException ex) {
-            resolve_dns=false;
-        }
         f=NumberFormat.getNumberInstance();
         f.setGroupingUsed(false);
         // f.setMinimumFractionDigits(2);
@@ -329,17 +318,6 @@ public class Util {
         assert list.size() == expected_size : "list doesn't have the expected (" + expected_size + ") elements: " + list;
     }
 
-
-    public static void setScope(Message msg,short scope) {
-        SCOPE.ScopeHeader hdr=SCOPE.ScopeHeader.createMessageHeader(scope);
-        msg.putHeader(Global.SCOPE_ID,hdr);
-        msg.setFlag(Message.Flag.SCOPED);
-    }
-
-    public static short getScope(Message msg) {
-        SCOPE.ScopeHeader hdr=(SCOPE.ScopeHeader)msg.getHeader(Global.SCOPE_ID);
-        return hdr != null? hdr.getScope() : 0;
-    }
 
     public static byte[] createAuthenticationDigest(String passcode,long t1,double q1) throws IOException,
                                                                                               NoSuchAlgorithmException {
@@ -1447,6 +1425,10 @@ public class Util {
         return matcher.matches();
     }
 
+    public static boolean productGreaterThan(long n1, long n2, long val) {
+        long div=(long)Math.floor(val/(double)n1);
+        return div < n2;
+    }
 
     public static <T> boolean different(T one,T two) {
         return !match(one,two);
@@ -1519,6 +1501,10 @@ public class Util {
      * chances are that in 80% of all cases, true will be returned and false in 20%.
      */
     public static boolean tossWeightedCoin(double probability) {
+        if(probability >= 1)
+            return true;
+        if(probability <= 0)
+            return false;
         long r=random(100);
         long cutoff=(long)(probability * 100);
         return r < cutoff;
@@ -1701,11 +1687,6 @@ public class Util {
     }
 
 
-    public static String format(double value) {
-        return f.format(value);
-    }
-
-
     public static long readBytesLong(String input) {
         Tuple<String,Long> tuple=readBytes(input);
         double num=Double.parseDouble(tuple.getVal1());
@@ -1785,7 +1766,7 @@ public class Util {
      * Fragments a byte buffer into smaller fragments of (max.) frag_size.
      * Example: a byte buffer of 1024 bytes and a frag_size of 248 gives 4 fragments
      * of 248 bytes each and 1 fragment of 32 bytes.
-     * @return An array of byte buffers (<code>byte[]</code>).
+     * @return An array of byte buffers ({@code byte[]}).
      */
     public static byte[][] fragmentBuffer(byte[] buf,int frag_size,final int length) {
         byte[] retval[];
@@ -1847,7 +1828,7 @@ public class Util {
 
     /**
      * Concatenates smaller fragments into entire buffers.
-     * @param fragments An array of byte buffers (<code>byte[]</code>)
+     * @param fragments An array of byte buffers ({@code byte[]})
      * @return A byte buffer
      */
     public static byte[] defragmentBuffer(byte[] fragments[]) {
@@ -2181,7 +2162,7 @@ public class Util {
         Object[] array=list.toArray();
         for(int i=0; i < array.length; i++) {
             T tmp=(T)array[i];
-            if(tmp != null && tmp.equals(obj))
+            if(Objects.equals(tmp, obj))
                 return (T)array[(i + 1) % array.length];
         }
         return null;
@@ -2252,10 +2233,7 @@ public class Util {
 
     public static Object[][] createTimer() {
         return new Object[][]{
-          {new DefaultTimeScheduler(5)},
-          {new TimeScheduler2()},
           {new TimeScheduler3()},
-          {new HashedTimingWheel(5)}
         };
     }
 
@@ -2383,7 +2361,8 @@ public class Util {
         return getAllDeclaredFieldsWithAnnotations(clazz);
     }
 
-    public static Field[] getAllDeclaredFieldsWithAnnotations(final Class clazz,Class<? extends Annotation>... annotations) {
+    @SafeVarargs
+    public static Field[] getAllDeclaredFieldsWithAnnotations(final Class clazz, Class<? extends Annotation>... annotations) {
         List<Field> list=new ArrayList<>(30);
         for(Class curr=clazz; curr != null; curr=curr.getSuperclass()) {
             Field[] fields=curr.getDeclaredFields();
@@ -2407,7 +2386,8 @@ public class Util {
         return retval;
     }
 
-    public static Method[] getAllDeclaredMethodsWithAnnotations(final Class clazz,Class<? extends Annotation>... annotations) {
+    @SafeVarargs
+    public static Method[] getAllDeclaredMethodsWithAnnotations(final Class clazz, Class<? extends Annotation>... annotations) {
         List<Method> list=new ArrayList<>(30);
         for(Class curr=clazz; curr != null; curr=curr.getSuperclass()) {
             Method[] methods=curr.getDeclaredMethods();
@@ -2965,12 +2945,7 @@ public class Util {
 
     public static String shortName(InetAddress hostname) {
         if(hostname == null) return null;
-        StringBuilder sb=new StringBuilder();
-        if(resolve_dns)
-            sb.append(hostname.getHostName());
-        else
-            sb.append(hostname.getHostAddress());
-        return sb.toString();
+        return hostname.getHostAddress();
     }
 
     public static String generateLocalName() {
@@ -3008,20 +2983,14 @@ public class Util {
 
     public static ServerSocket createServerSocket(SocketFactory factory, String service_name, InetAddress bind_addr, int start_port) {
         ServerSocket ret=null;
-
-        while(true) {
-            try {
-                ret=factory.createServerSocket(service_name,start_port,50,bind_addr);
-            }
-            catch(BindException bind_ex) {
-                start_port++;
-                continue;
-            }
-            catch(IOException io_ex) {
-            }
-            break;
+        try {
+            ret=factory.createServerSocket(service_name);
+            Util.bind(ret, bind_addr, start_port, start_port+1000, 50);
+            return ret;
         }
-        return ret;
+        catch(Exception e) {
+            return null;
+        }
     }
 
 
@@ -3031,46 +3000,25 @@ public class Util {
      */
     public static ServerSocket createServerSocket(SocketFactory factory,String service_name,InetAddress bind_addr,
                                                   int start_port,int end_port) throws Exception {
-        ServerSocket ret=null;
-        int original_start_port=start_port;
-
-        while(true) {
-            try {
-                if(bind_addr == null)
-                    ret=factory.createServerSocket(service_name,start_port);
-                else {
-                    // changed (bela Sept 7 2007): we accept connections on all NICs
-                    ret=factory.createServerSocket(service_name,start_port,50,bind_addr);
-                }
-            }
-            catch(SocketException bind_ex) {
-                if(start_port == end_port)
-                    throw new BindException("No available port to bind to in range [" + original_start_port + " .. " + end_port + "]");
-                if(bind_addr != null && !bind_addr.isLoopbackAddress()) {
-                    NetworkInterface nic=NetworkInterface.getByInetAddress(bind_addr);
-                    if(nic == null)
-                        throw new BindException("bind_addr " + bind_addr + " is not a valid interface: " + bind_ex);
-                }
-                start_port++;
-                continue;
-            }
-            break;
-        }
+        ServerSocket ret=factory.createServerSocket(service_name);
+        bind(ret, bind_addr, start_port, end_port);
         return ret;
     }
 
-    public static ServerSocketChannel createServerSocketChannel(InetAddress bind_addr,
-                                                         int start_port, int end_port) throws Exception {
-        ServerSocketChannel channel=ServerSocketChannel.open();
+
+    public static void bind(ServerSocket srv_sock, InetAddress bind_addr,
+                            int start_port, int end_port) throws Exception {
+        bind(srv_sock, bind_addr, start_port, end_port, 50);
+    }
+
+    public static void bind(ServerSocket srv_sock, InetAddress bind_addr,
+                            int start_port, int end_port, int backlog) throws Exception {
         int original_start_port=start_port;
 
         while(true) {
             try {
-                if(bind_addr == null)
-                    channel.bind(new InetSocketAddress(start_port));
-                else {
-                    channel.bind(new InetSocketAddress(bind_addr, start_port));
-                }
+                InetSocketAddress sock_addr=new InetSocketAddress(bind_addr, start_port);
+                srv_sock.bind(sock_addr, backlog);
             }
             catch(SocketException bind_ex) {
                 if(start_port == end_port)
@@ -3085,8 +3033,40 @@ public class Util {
             }
             break;
         }
+    }
 
+
+    public static ServerSocketChannel createServerSocketChannel(InetAddress bind_addr,
+                                                                int start_port, int end_port) throws Exception {
+        ServerSocketChannel channel=ServerSocketChannel.open();
+        bind(channel, bind_addr, start_port, end_port);
         return channel;
+    }
+
+    public static void bind(final ServerSocketChannel ch, InetAddress bind_addr, int start_port, int end_port) throws Exception {
+        bind(ch, bind_addr, start_port, end_port, 50);
+    }
+
+
+    public static void bind(final ServerSocketChannel ch, InetAddress bind_addr, int start_port, int end_port, int backlog) throws Exception {
+        int original_start_port=start_port;
+        while(true) {
+            try {
+                ch.bind(new InetSocketAddress(bind_addr, start_port), backlog);
+            }
+            catch(SocketException bind_ex) {
+                if(start_port == end_port)
+                    throw new BindException("No available port to bind to in range [" + original_start_port + " .. " + end_port + "]");
+                if(bind_addr != null && !bind_addr.isLoopbackAddress()) {
+                    NetworkInterface nic=NetworkInterface.getByInetAddress(bind_addr);
+                    if(nic == null)
+                        throw new BindException("bind_addr " + bind_addr + " is not a valid interface: " + bind_ex);
+                }
+                start_port++;
+                continue;
+            }
+            break;
+        }
     }
 
 
@@ -3144,12 +3124,12 @@ public class Util {
             if(log != null && log.isWarnEnabled()) {
                 StringBuilder sb=new StringBuilder();
                 String type=mcast_addr != null? mcast_addr instanceof Inet4Address? "IPv4" : "IPv6" : "n/a";
-                sb.append("could not bind to ").append(mcast_addr).append(" (").append(type).append(" address)");
-                sb.append("; make sure your mcast_addr is of the same type as the preferred IP stack (IPv4 or IPv6)");
-                sb.append(" by checking the value of the system properties java.net.preferIPv4Stack and java.net.preferIPv6Addresses.");
-                sb.append("\nWill ignore mcast_addr, but this may lead to cross talking " +
-                            "(see http://www.jboss.org/community/docs/DOC-9469 for details). ");
-                sb.append("\nException was: ").append(ex);
+                sb.append("could not bind to ").append(mcast_addr).append(" (").append(type).append(" address)")
+                        .append("; make sure your mcast_addr is of the same type as the preferred IP stack (IPv4 or IPv6)")
+                        .append(" by checking the value of the system properties java.net.preferIPv4Stack and java.net.preferIPv6Addresses.")
+                        .append("\nWill ignore mcast_addr, but this may lead to cross talking " +
+                                "(see http://www.jboss.org/community/docs/DOC-9469 for details). ")
+                        .append("\nException was: ").append(ex);
                 log.warn(sb.toString());
             }
         }
@@ -3898,10 +3878,9 @@ public class Util {
         String tmp=getProperty(val.substring(start_index + 2,end_index));
         if(tmp == null)
             return val;
-        StringBuilder sb=new StringBuilder();
-        sb.append(val.substring(0,start_index));
-        sb.append(tmp);
-        sb.append(val.substring(end_index + 1));
+        StringBuilder sb = new StringBuilder();
+        sb.append(val.substring(0, start_index))
+                .append(tmp).append(val.substring(end_index + 1));
         return sb.toString();
     }
 

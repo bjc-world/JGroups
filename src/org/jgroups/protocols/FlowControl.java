@@ -13,7 +13,6 @@ import org.jgroups.util.Average;
 import org.jgroups.util.MessageBatch;
 import org.jgroups.util.Util;
 
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
@@ -79,16 +78,7 @@ public abstract class FlowControl extends Protocol {
     @Property(description="Computed as max_credits x min_theshold unless explicitly set")
     protected long min_credits=0;
     
-    /**
-     * Whether an up thread that comes back down should be allowed to bypass blocking if all credits are exhausted.
-     * Avoids JGRP-465. Set to false by default in 2.5 because we have OOB messages for credit replenishments -
-     * this flag should not be set to true if the concurrent stack is used
-     */
-    @Property(description="Does not block a down message if it is a result of handling an up message in the" +
-            "same thread. Fixes JGRP-928",deprecatedMessage="not used any longer")
-    protected boolean ignore_synchronous_response=false;
-    
-    
+
     
     
     /* ---------------------------------------------   JMX      ------------------------------------------------------ */
@@ -530,26 +520,18 @@ public abstract class FlowControl extends Protocol {
         if(log.isTraceEnabled()) log.trace("new membership: %s", mbrs);
 
         // add members not in membership to received and sent hashmap (with full credits)
-        for(Address addr: mbrs) {
-            if(!received.containsKey(addr))
-                received.put(addr, new Credit(max_credits, null));
-        }
+        mbrs.stream().filter(addr -> !received.containsKey(addr)).forEach(addr -> received.put(addr, new Credit(max_credits, null)));
+
         // remove members that left
-        for(Iterator<Address> it=received.keySet().iterator(); it.hasNext();) {
-            Address addr=it.next();
-            if(!mbrs.contains(addr))
-                it.remove();
-        }
+        received.keySet().retainAll(mbrs);
     }
 
 
 
     protected static String printMap(Map<Address,Credit> m) {
-        StringBuilder sb=new StringBuilder();
-        for(Map.Entry<Address,Credit> entry: m.entrySet()) {
-            sb.append(entry.getKey()).append(": ").append(entry.getValue()).append("\n");
-        }
-        return sb.toString();
+        return m.entrySet().stream().collect(StringBuilder::new,
+                                             (sb,entry) -> sb.append(entry.getKey()).append(": ").append(entry.getValue()).append("\n"),
+                                             (l,r) -> {}).toString();
     }
 
 

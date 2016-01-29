@@ -74,7 +74,7 @@ public class RSVP extends Protocol {
             log.warn(Util.getMessage("RSVP_Misconfig"), resend_interval, timeout);
             resend_interval=timeout / 3;
         }
-        handle_unicasts=stack.findProtocol(UNICAST.class, UNICAST3.class) == null;
+        handle_unicasts=stack.findProtocol(UNICAST3.class) == null;
     }
 
 
@@ -85,8 +85,7 @@ public class RSVP extends Protocol {
 
     public void stop() {
         stopResendTask();
-        for(Entry entry: ids.values())
-            entry.destroy();
+        ids.values().forEach(Entry::destroy);
         ids.clear();
         super.stop();
     }

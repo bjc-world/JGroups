@@ -94,8 +94,8 @@ public class JChannel extends Channel {
     }
 
     /**
-     * Constructs a <code>JChannel</code> instance with the protocol stack
-     * specified by the <code>DEFAULT_PROTOCOL_STACK</code> member.
+     * Constructs a {@code JChannel} instance with the protocol stack
+     * specified by the {@code DEFAULT_PROTOCOL_STACK} member.
      * @throws Exception If problems occur during the initialization of the protocol stack.
      */
     public JChannel() throws Exception {
@@ -304,9 +304,9 @@ public class JChannel extends Channel {
     
     /**
      * Connects this channel to a group and gets a state from a specified state provider.<p/>
-     * This method invokes <code>connect()</code> and then <code>getState</code>.<p/>
+     * This method invokes {@code connect()} and then {@code getState}.<p/>
      * If the FLUSH protocol is in the channel's stack definition, only one flush round is executed for both connecting and
-     * fetching the state rather than two flushes if we invoke <code>connect</code> and <code>getState</code> in succession.
+     * fetching the state rather than two flushes if we invoke {@code connect} and {@code getState} in succession.
      * <p/>
      * If the channel is already connected, an error message will be printed to the error log.
      * If the channel is closed a ChannelClosed exception will be thrown.
@@ -485,24 +485,6 @@ public class JChannel extends Channel {
     @ManagedAttribute(description="Returns cluster name this channel is connected to")
     public String getClusterName() {return state == State.CONNECTED? cluster_name : null;}
 
-    /**
-     * Returns the first {@link AddressGenerator} in the list, or null if none is set
-     * @return
-     * @since 2.12
-     * @deprecated Doesn't make any sense as there's list of address generators, will be removed in 4.0
-     */
-    @Deprecated
-    public AddressGenerator getAddressGenerator() {
-        return (address_generators == null || address_generators.isEmpty())? null : address_generators.get(0);
-    }
-
-    /**
-     * @deprecated Use {@link #addAddressGenerator(org.jgroups.stack.AddressGenerator)} instead
-     */
-    @Deprecated
-    public void setAddressGenerator(AddressGenerator address_generator) {
-        addAddressGenerator(address_generator);
-    }
 
     /**
      * Sets the new {@link AddressGenerator}. New addresses will be generated using the new generator. This
@@ -532,11 +514,7 @@ public class JChannel extends Channel {
      * Retrieves state from the target member. See {@link #getState(Address,long)} for details.
      */
     public void getState(Address target, long timeout, boolean useFlushIfPresent) throws Exception {
-    	Callable<Boolean> flusher = new Callable<Boolean>() {
-			public Boolean call() throws Exception {
-				return Util.startFlush(JChannel.this);
-			}
-		};
+    	Callable<Boolean> flusher =() -> Util.startFlush(JChannel.this);
 		getState(target, timeout, useFlushIfPresent?flusher:null);
 	}
 
@@ -796,10 +774,9 @@ public class JChannel extends Channel {
     @ManagedOperation
     public String toString(boolean details) {
         StringBuilder sb=new StringBuilder();
-        sb.append("local_addr=").append(local_addr).append('\n');
-        sb.append("cluster_name=").append(cluster_name).append('\n');
-        sb.append("my_view=").append(my_view).append('\n');
-        sb.append("state=").append(state).append('\n');
+        sb.append("local_addr=").append(local_addr).append('\n').append("cluster_name=")
+        		.append(cluster_name).append('\n').append("my_view=").append(my_view).append('\n')
+                .append("state=").append(state).append('\n');
         if(details) {
             sb.append("discard_own_messages=").append(discard_own_messages).append('\n');
             sb.append("state_transfer_supported=").append(state_transfer_supported).append('\n');
@@ -846,8 +823,8 @@ public class JChannel extends Channel {
 
     protected final void init(ProtocolStackConfigurator configurator) throws Exception {
         List<ProtocolConfiguration> configs=configurator.getProtocolStack();
-        for(ProtocolConfiguration config: configs)
-            config.substituteVariables();  // replace vars with system props
+        // replace vars with system props
+        configs.forEach(ProtocolConfiguration::substituteVariables);
 
         prot_stack=new ProtocolStack(this);
         prot_stack.setup(configs); // Setup protocol stack (creates protocol, calls init() on them)
@@ -973,9 +950,9 @@ public class JChannel extends Channel {
     /**
      * Disconnects and closes the channel. This method does the following things
      * <ol>
-     * <li>Calls <code>this.disconnect</code> if the disconnect parameter is true
-     * <li>Calls <code>ProtocolStack.stop</code> on the protocol stack
-     * <li>Calls <code>ProtocolStack.destroy</code> on the protocol stack
+     * <li>Calls {@code this.disconnect} if the disconnect parameter is true
+     * <li>Calls {@code ProtocolStack.stop} on the protocol stack
+     * <li>Calls {@code ProtocolStack.destroy} on the protocol stack
      * <li>Sets the channel closed and channel connected flags to true and false
      * <li>Notifies any channel listener of the channel close operation
      * </ol>
@@ -1088,7 +1065,7 @@ public class JChannel extends Channel {
     class MyProbeHandler implements DiagnosticsHandler.ProbeHandler {
 
         public Map<String, String> handleProbe(String... keys) {
-            Map<String, String> map=new HashMap<>(2);
+            Map<String, String> map=new HashMap<>(3);
             for(String key: keys) {
                 if(key.startsWith("jmx")) {
                     handleJmx(map, key);
@@ -1109,28 +1086,17 @@ public class JChannel extends Channel {
                         }
                     }
                 }
-
             }
-
-            map.put("version", Version.description);
-            if(my_view != null && !map.containsKey("view"))
-                map.put("view", my_view.toString());
-            map.put("local_addr", getAddressAsString() + " [" + getAddressAsUUID() + "]");
-            PhysicalAddress physical_addr=(PhysicalAddress)down(new Event(Event.GET_PHYSICAL_ADDRESS, local_addr));
-            if(physical_addr != null)
-                map.put("physical_addr", physical_addr.toString());
-            map.put("cluster", getClusterName());
             return map;
         }
 
         public String[] supportedKeys() {
-            return new String[]{"reset-stats", "jmx", "invoke=<operation>[<args>]", "\nop=<operation>[<args>]"};
+            return new String[]{"reset-stats", "jmx", "op=<operation>[<args>]"};
         }
 
         protected void resetAllStats() {
             List<Protocol> prots=getProtocolStack().getProtocols();
-            for(Protocol prot: prots)
-                prot.resetStatistics();
+            prots.forEach(Protocol::resetStatistics);
             resetStats();
         }
 

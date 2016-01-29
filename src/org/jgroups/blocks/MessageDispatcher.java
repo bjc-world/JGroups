@@ -2,7 +2,6 @@
 package org.jgroups.blocks;
 
 import org.jgroups.*;
-import org.jgroups.blocks.mux.Muxer;
 import org.jgroups.logging.Log;
 import org.jgroups.logging.LogFactory;
 import org.jgroups.protocols.TP;
@@ -15,7 +14,6 @@ import org.jgroups.util.*;
 import java.io.*;
 import java.util.*;
 import java.util.concurrent.CopyOnWriteArraySet;
-import java.util.concurrent.atomic.AtomicInteger;
 
 
 /**
@@ -50,13 +48,8 @@ public class MessageDispatcher implements AsyncRequestHandler, ChannelListener, 
     protected Address                               local_addr;
     protected final Log                             log=LogFactory.getLog(MessageDispatcher.class);
     protected boolean                               hardware_multicast_supported=false;
-    protected final AtomicInteger                   sync_unicasts=new AtomicInteger(0);
-    protected final AtomicInteger                   async_unicasts=new AtomicInteger(0);
-    protected final AtomicInteger                   sync_multicasts=new AtomicInteger(0);
-    protected final AtomicInteger                   async_multicasts=new AtomicInteger(0);
-    protected final AtomicInteger                   sync_anycasts=new AtomicInteger(0);
-    protected final AtomicInteger                   async_anycasts=new AtomicInteger(0);
     protected final Set<ChannelListener>            channel_listeners=new CopyOnWriteArraySet<>();
+    protected final RpcStats                        rpc_stats=new RpcStats(false);
     protected final DiagnosticsHandler.ProbeHandler probe_handler=new MyProbeHandler();
 
 
@@ -87,8 +80,10 @@ public class MessageDispatcher implements AsyncRequestHandler, ChannelListener, 
         setRequestHandler(req_handler);
     }
 
-
-    public boolean asyncDispatching() {return async_dispatching;}
+    public RpcStats          rpcStats()                {return rpc_stats;}
+    public MessageDispatcher extendedStats(boolean fl) {rpc_stats.extendedStats(fl); return this;}
+    public boolean           extendedStats()           {return rpc_stats.extendedStats();}
+    public boolean           asyncDispatching()        {return async_dispatching;}
 
     public MessageDispatcher asyncDispatching(boolean flag) {
         async_dispatching=flag;
@@ -156,7 +151,7 @@ public class MessageDispatcher implements AsyncRequestHandler, ChannelListener, 
         }
     }
 
-    protected RequestCorrelator createRequestCorrelator(Protocol transport, RequestHandler handler, Address local_addr) {
+    protected static RequestCorrelator createRequestCorrelator(Protocol transport, RequestHandler handler, Address local_addr) {
         return new RequestCorrelator(transport, handler, local_addr);
     }
 
@@ -205,45 +200,26 @@ public class MessageDispatcher implements AsyncRequestHandler, ChannelListener, 
         local_addr=channel.getAddress();
         if(prot_adapter == null)
             prot_adapter=new ProtocolAdapter();
-        // Don't force installing the UpHandler so subclasses can use this
-        // method and still integrate with a MuxUpHandler
+        // Don't force installing the UpHandler so subclasses can use this method
         installUpHandler(prot_adapter, false);
     }
 
     /**
-     * Sets the given UpHandler as the UpHandler for the channel, or, if the
-     * channel already has a Muxer installed as it's UpHandler, sets the given
-     * handler as the Muxer's {@link Muxer#setDefaultHandler(Object) default handler}.
-     * If the relevant handler is already installed, the {@code canReplace}
-     * controls whether this method replaces it (after logging a WARN) or simply
-     * leaves {@code handler} uninstalled.
-     * <p>
-     * Passing {@code false} as the {@code canReplace} value allows
-     * callers to use this method to install defaults without concern about
-     * inadvertently overriding
+     * Sets the given UpHandler as the UpHandler for the channel. If the relevant handler is already installed,
+     * the {@code canReplace} controls whether this method replaces it (after logging a WARN) or simply
+     * leaves {@code handler} uninstalled.<p>
+     * Passing {@code false} as the {@code canReplace} value allows callers to use this method to install defaults
+     * without concern about inadvertently overriding
      *
      * @param handler the UpHandler to install
-     * @param canReplace {@code true} if an existing Channel upHandler or
-     *              Muxer default upHandler can be replaced; {@code false}
+     * @param canReplace {@code true} if an existing Channel upHandler can be replaced; {@code false}
      *              if this method shouldn't install
      */
     protected void installUpHandler(UpHandler handler, boolean canReplace)
     {
        UpHandler existing = channel.getUpHandler();
-       if (existing == null) {
+       if (existing == null)
            channel.setUpHandler(handler);
-       }
-       else if (existing instanceof Muxer<?>) {
-           @SuppressWarnings("unchecked")
-           Muxer<UpHandler> mux = (Muxer<UpHandler>) existing;
-           if (mux.getDefaultHandler() == null) {
-               mux.setDefaultHandler(handler);
-           }
-           else if (canReplace) {
-               log.warn("Channel Muxer already has a default up handler installed (%s) but now it is being overridden",  mux.getDefaultHandler());
-               mux.setDefaultHandler(handler);
-           }
-       }
        else if (canReplace) {
            log.warn("Channel already has an up handler installed (%s) but now it is being overridden", existing);
            channel.setUpHandler(handler);
@@ -282,7 +258,7 @@ public class MessageDispatcher implements AsyncRequestHandler, ChannelListener, 
                                                                  RequestOptions options,
                                                                  FutureListener<RspList<T>> listener) throws Exception {
         GroupRequest<T> req=cast(dests,msg,options,false, listener);
-        return req != null? req : new NullFuture<>(new RspList<T>());
+        return req != null? req : new NullFuture<>(new RspList<>());
     }
 
     /**
@@ -312,20 +288,12 @@ public class MessageDispatcher implements AsyncRequestHandler, ChannelListener, 
         }
 
         msg.setFlag(options.getFlags()).setTransientFlag(options.getTransientFlags());
-        if(options.getScope() > 0)
-            msg.setScope(options.getScope());
 
         List<Address> real_dests;
         // we need to clone because we don't want to modify the original
-        if(dests != null) {
-            real_dests=new ArrayList<>(dests.size());
-            for(Address dest: dests) {
-                if(dest instanceof SiteAddress || this.members.contains(dest)) {
-                    if(!real_dests.contains(dest))
-                        real_dests.add(dest);
-                }
-            }
-        }
+        if(dests != null)
+            real_dests=dests.stream().filter(dest -> dest instanceof SiteAddress || this.members.contains(dest))
+              .collect(ArrayList::new, (list,dest) -> {if(!list.contains(dest)) list.add(dest);}, (l,r) -> {});
         else
             real_dests=new ArrayList<>(members);
 
@@ -345,24 +313,18 @@ public class MessageDispatcher implements AsyncRequestHandler, ChannelListener, 
                 real_dests.remove(excluding);
         }
 
-        // don't even send the message if the destination list is empty
-        if(log.isTraceEnabled())
-            log.trace("real_dests=%s", real_dests);
-
         if(real_dests.isEmpty()) {
-            if(log.isTraceEnabled())
-                log.trace("destination list is empty, won't send message");
+            log.trace("destination list is empty, won't send message");
             return null;
         }
 
-        boolean async=options.getMode() == ResponseMode.GET_NONE;
-        if(options.getAnycasting()) {
-            if(async) async_anycasts.incrementAndGet();
-            else sync_anycasts.incrementAndGet();
-        }
-        else {
-            if(async) async_multicasts.incrementAndGet();
-            else sync_multicasts.incrementAndGet();
+        boolean sync=options.getMode() != ResponseMode.GET_NONE;
+        boolean non_blocking=!sync || !block_for_results, anycast=options.getAnycasting();
+        if(non_blocking) {
+            if(anycast)
+                rpc_stats.addAnycast(sync, 0, real_dests);
+            else
+                rpc_stats.add(RpcStats.Type.MULTICAST, null, sync, 0);
         }
 
         GroupRequest<T> req=new GroupRequest<>(msg, corr, real_dests, options);
@@ -371,7 +333,15 @@ public class MessageDispatcher implements AsyncRequestHandler, ChannelListener, 
         req.setResponseFilter(options.getRspFilter());
         req.setAnycasting(options.getAnycasting());
         req.setBlockForResults(block_for_results);
+        long start=non_blocking || !rpc_stats.extendedStats()? 0 : System.nanoTime();
         req.execute();
+        long time=non_blocking || !rpc_stats.extendedStats()? 0 : System.nanoTime() - start;
+        if(!non_blocking) {
+            if(anycast)
+                rpc_stats.addAnycast(sync, time, real_dests);
+            else
+                rpc_stats.add(RpcStats.Type.MULTICAST, null, sync, time);
+        }
         return req;
     }
 
@@ -406,19 +376,16 @@ public class MessageDispatcher implements AsyncRequestHandler, ChannelListener, 
         }
 
         msg.setFlag(opts.getFlags()).setTransientFlag(opts.getTransientFlags());
-        if(opts.getScope() > 0)
-            msg.setScope(opts.getScope());
-        if(opts.getMode() == ResponseMode.GET_NONE)
-            async_unicasts.incrementAndGet();
-        else
-            sync_unicasts.incrementAndGet();
-
+        boolean async_rpc=opts.getMode() == ResponseMode.GET_NONE;
+        if(async_rpc)
+            rpc_stats.add(RpcStats.Type.UNICAST, dest, false, 0);
         UnicastRequest<T> req=new UnicastRequest<>(msg, corr, dest, opts);
+        long start=async_rpc || !rpc_stats.extendedStats()? 0 : System.nanoTime();
         req.execute();
-
-        if(opts.getMode() == ResponseMode.GET_NONE)
+        if(async_rpc)
             return null;
-
+        long time=!rpc_stats.extendedStats()? 0 : System.nanoTime() - start;
+        rpc_stats.add(RpcStats.Type.UNICAST, dest, true, time);
         Rsp<T> rsp=req.getResult();
         if(rsp.wasSuspected())
             throw new SuspectedException(dest);
@@ -461,13 +428,7 @@ public class MessageDispatcher implements AsyncRequestHandler, ChannelListener, 
         }
 
         msg.setFlag(options.getFlags()).setTransientFlag(options.getTransientFlags());
-        if(options.getScope() > 0)
-            msg.setScope(options.getScope());
-        if(options.getMode() == ResponseMode.GET_NONE)
-            async_unicasts.incrementAndGet();
-        else
-            sync_unicasts.incrementAndGet();
-
+        rpc_stats.add(RpcStats.Type.UNICAST, dest, options.getMode() != ResponseMode.GET_NONE, 0);
         UnicastRequest<T> req=new UnicastRequest<>(msg, corr, dest, options);
         if(listener != null)
             req.setListener(listener);
@@ -642,28 +603,37 @@ public class MessageDispatcher implements AsyncRequestHandler, ChannelListener, 
     }
 
 
-    class MyProbeHandler implements DiagnosticsHandler.ProbeHandler {
+    protected class MyProbeHandler implements DiagnosticsHandler.ProbeHandler {
 
         @Override
         public Map<String,String> handleProbe(String... keys) {
-            Map<String,String> retval=new HashMap<>();
+            Map<String,String> retval=new HashMap<>(16);
             for(String key: keys) {
-                if("rpcs".equals(key)) {
-                    String channel_name = channel != null ? channel.getClusterName() : "";
-                    retval.put(channel_name + ": sync  unicast   RPCs", sync_unicasts.toString());
-                    retval.put(channel_name + ": sync  multicast RPCs", sync_multicasts.toString());
-                    retval.put(channel_name + ": async unicast   RPCs", async_unicasts.toString());
-                    retval.put(channel_name + ": async multicast RPCs", async_multicasts.toString());
-                    retval.put(channel_name + ": sync  anycast   RPCs", sync_anycasts.toString());
-                    retval.put(channel_name + ": async anycast   RPCs", async_anycasts.toString());
-                }
-                if("rpcs-reset".equals(key)) {
-                    sync_unicasts.set(0);
-                    sync_multicasts.set(0);
-                    async_unicasts.set(0);
-                    async_multicasts.set(0);
-                    sync_anycasts.set(0);
-                    async_anycasts.set(0);
+                switch(key) {
+                    case "rpcs":
+                        String channel_name=channel != null? channel.getClusterName() : "";
+                        retval.put(channel_name + ": sync  unicast   RPCs", String.valueOf(rpc_stats.unicasts(true)));
+                        retval.put(channel_name + ": sync  multicast RPCs", String.valueOf(rpc_stats.multicasts(true)));
+                        retval.put(channel_name + ": async unicast   RPCs", String.valueOf(rpc_stats.unicasts(false)));
+                        retval.put(channel_name + ": async multicast RPCs", String.valueOf(rpc_stats.multicasts(false)));
+                        retval.put(channel_name + ": sync  anycast   RPCs", String.valueOf(rpc_stats.anycasts(true)));
+                        retval.put(channel_name + ": async anycast   RPCs", String.valueOf(rpc_stats.anycasts(false)));
+                        break;
+                    case "rpcs-reset":
+                        rpc_stats.reset();
+                        break;
+                    case "rpcs-enable-details":
+                        rpc_stats.extendedStats(true);
+                        break;
+                    case "rpcs-disable-details":
+                        rpc_stats.extendedStats(false);
+                        break;
+                    case "rpcs-details":
+                        if(!rpc_stats.extendedStats())
+                            retval.put(key, "<details not enabled: use rpc-enable-details to enable>");
+                        else
+                            retval.put(key, rpc_stats.printOrderByDest());
+                        break;
                 }
             }
             return retval;
@@ -671,7 +641,7 @@ public class MessageDispatcher implements AsyncRequestHandler, ChannelListener, 
 
         @Override
         public String[] supportedKeys() {
-            return new String[]{"rpcs", "rpcs-reset"};
+            return new String[]{"rpcs", "rpcs-reset", "rpcs-enable-details", "rpcs-disable-details", "rpcs-details"};
         }
     }
 
